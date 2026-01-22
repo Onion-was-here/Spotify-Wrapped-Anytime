@@ -64,11 +64,9 @@ def get_reccobeats_features(track_id):
 def spotify_to_roccobeatsID(spotify_id):
     url = "https://api.reccobeats.com/v1/track"
     r = requests.get(url, params={"ids": spotify_id})
-    print(r.json())
     r.raise_for_status()
 
     data = r.json()
-    print(data)
 
     content = data.get("content", [])
     if not content:
@@ -101,9 +99,3 @@ def get_song_vibe():
         })
     
     return vibes
-    
-
-# def rec_artists():
-
-vibes = get_song_vibe()
-print(vibes)
