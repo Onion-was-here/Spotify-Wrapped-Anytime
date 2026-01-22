@@ -48,8 +48,6 @@ def get_reccobeats_features(track_id):
     }
     
     rocco_track_id = spotify_to_roccobeatsID(track_id)
-    print(rocco_track_id)
-    
     conn.request(
         "GET",
         f"/v1/track/{rocco_track_id}/audio-features",
@@ -64,11 +62,9 @@ def get_reccobeats_features(track_id):
 def spotify_to_roccobeatsID(spotify_id):
     url = "https://api.reccobeats.com/v1/track"
     r = requests.get(url, params={"ids": spotify_id})
-    print(r.json())
     r.raise_for_status()
 
     data = r.json()
-    print(data)
 
     content = data.get("content", [])
     if not content:
@@ -89,7 +85,6 @@ def get_song_vibe():
             continue
             
         features = get_reccobeats_features(track_id)
-        print(features)
 
         vibes.append({
             "name": t["name"],
@@ -99,11 +94,28 @@ def get_song_vibe():
             "valence": features.get("valence"),
             "tempo": features.get("tempo"),
         })
-    
     return vibes
+
+def get_avg_element(elem, json_data):
+    total = 0
+    count = 0
     
-
-# def rec_artists():
-
-vibes = get_song_vibe()
-print(vibes)
+    for n in json_data:
+        val = n.get(elem)
+        
+        if(val is not None):
+            total += val
+            count += 1
+    return total / count if count > 0 else None
+               
+def average_song_stats():
+   song_list =  get_song_vibe()
+   
+   avg_energy = get_avg_element("energy", song_list)
+   avg_dancebility = get_avg_element("danceability", song_list)
+   avg_valence = get_avg_element("valence", song_list)
+   avg_tempo = get_avg_element("tempo", song_list)
+   
+   print(avg_tempo,avg_dancebility,avg_valence,avg_energy)
+   
+average_song_stats()
