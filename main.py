@@ -126,4 +126,26 @@ def average_song_stats(rb):
         get_avg_element("valence", song_list),
         get_avg_element("tempo", song_list),
     )
+    
+rb = ReccoBeatsClient()
 
+num = int((input("How many songs and artists?\n")))
+term = input("\nshort, medium or long term?\n")
+
+if term == "short":
+    term = "short_term"
+elif term == "medium":
+    term = "medium_term"
+elif term == "long":
+    term = DEFAULT_TIME_RANGE
+else:
+    print("invalid term")
+ 
+print("Top Artists:")
+show(get_top_artists(num, term))
+print("\nTop Tracks:")
+
+show(get_top_songs(num, term))
+
+avg = average_song_stats(rb)
+print("\nAverages:", avg)
