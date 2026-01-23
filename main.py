@@ -78,8 +78,6 @@ class TrackVibe:
 
 def top_track_vibes(
     rb,
-    limit = DEFAULT_LIMIT,
-    time_range = DEFAULT_TIME_RANGE,
 ) -> List[TrackVibe]:
     top = get_top_songs()
 
