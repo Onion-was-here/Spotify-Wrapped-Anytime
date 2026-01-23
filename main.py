@@ -1,5 +1,7 @@
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials,SpotifyOAuth
+from typing import Optional, List, Dict, Any, Tuple
+from dataclasses import dataclass
 from dotenv import load_dotenv
 import os
 import json
@@ -12,110 +14,116 @@ CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
 
-def spotify_auth(SCOPE):
-      sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id = CLIENT_ID,
+RECCOBEATS_BASE = "https://api.reccobeats.com/v1"
+DEFAULT_TIME_RANGE = "long_term"
+DEFAULT_LIMIT = 10
+
+sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id = CLIENT_ID,
                                                    client_secret=CLIENT_SECRET,
                                                    redirect_uri=REDIRECT_URI,
-                                                   scope=SCOPE))
-      
-      return sp
+                                                   scope="user-top-read"))
   
 
-def get_top_artists():
+def get_top_artists(limit = DEFAULT_LIMIT, time_range = DEFAULT_TIME_RANGE):
+    return sp.current_user_top_artists(limit=limit, time_range=time_range)
 
-    sp = spotify_auth("user-top-read")
-    top_artists = sp.current_user_top_artists(limit = 10, time_range = 'long_term')
-    return top_artists
+def get_top_songs(limit = DEFAULT_LIMIT, time_range = DEFAULT_TIME_RANGE):
+    return sp.current_user_top_tracks(limit=limit, time_range=time_range)
 
-def get_top_songs():
-    
-    sp = spotify_auth("user-top-read")
-    top_songs = sp.current_user_top_tracks(limit = 10, time_range = 'long_term')
-
-    return top_songs
 
 def show(llist):
     for i, item in enumerate(llist["items"], start=1):
         print(f"{i}. {item['name']}")
 
  
-def get_reccobeats_features(track_id):
-    
-    conn = http.client.HTTPSConnection("api.reccobeats.com")
+#  RoccoBeats integration
+class ReccoBeatsClient:
+    def __init__(self, timeout = 10):
+        self.timeout = timeout
+        self._spotify_to_rb_cache: Dict[str, Optional[str]] = {}
 
-    headers = {
-        "Accept": "application/json"
-    }
-    
-    rocco_track_id = spotify_to_roccobeatsID(track_id)
-    conn.request(
-        "GET",
-        f"/v1/track/{rocco_track_id}/audio-features",
-        headers=headers
-    )
+    def spotify_to_reccobeats_id(self, spotify_id) -> Optional[str]:
+        if spotify_id in self._spotify_to_rb_cache:
+            return self._spotify_to_rb_cache[spotify_id]
 
-    res = conn.getresponse()
-    data = res.read().decode("utf-8")
+        url = f"{RECCOBEATS_BASE}/track"
+        r = requests.get(url, params={"ids": spotify_id}, timeout=self.timeout)
+        r.raise_for_status()
+        data = r.json()
 
-    return json.loads(data)
+        content = data.get("content", [])
+        rb_id = content[0].get("id") if content else None
+        self._spotify_to_rb_cache[spotify_id] = rb_id
+        return rb_id
 
-def spotify_to_roccobeatsID(spotify_id):
-    url = "https://api.reccobeats.com/v1/track"
-    r = requests.get(url, params={"ids": spotify_id})
-    r.raise_for_status()
+    def audio_features(self, spotify_track_id) -> Optional[Dict[str, Any]]:
+        rb_id = self.spotify_to_reccobeats_id(spotify_track_id)
+        if not rb_id:
+            return None
 
-    data = r.json()
+        url = f"{RECCOBEATS_BASE}/track/{rb_id}/audio-features"
+        r = requests.get(url, headers={"Accept": "application/json"}, timeout=self.timeout)
+        r.raise_for_status()
+        return r.json()
 
-    content = data.get("content", [])
-    if not content:
-        return None
+@dataclass
+class TrackVibe:
+    name: str
+    artist: str
+    energy: Optional[float]
+    danceability: Optional[float]
+    valence: Optional[float]
+    tempo: Optional[float]
 
-    return content[0]["id"]
 
+def top_track_vibes(
+    rb,
+    limit = DEFAULT_LIMIT,
+    time_range = DEFAULT_TIME_RANGE,
+) -> List[TrackVibe]:
+    top = get_top_songs()
 
-def get_song_vibe():
-    
-    songs = get_top_songs()
-    track_id = [t["id"] for t in songs["items"]]
-    
-    vibes = []
-    for t in songs["items"]:
-        track_id = t["id"]
+    vibes: List[TrackVibe] = []
+    for t in top.get("items", []):
+        
+        track_id = t.get("id")
         if not track_id:
             continue
-            
-        features = get_reccobeats_features(track_id)
 
-        vibes.append({
-            "name": t["name"],
-            "artist": t["artists"][0]["name"],
-            "energy": features.get("energy"),
-            "danceability": features.get("danceability"),
-            "valence": features.get("valence"),
-            "tempo": features.get("tempo"),
-        })
+        features = rb.audio_features(track_id)
+        vibes.append(
+            TrackVibe(
+                name=t.get("name", "Unknown"),
+                artist=(t.get("artists") or [{}])[0].get("name", "Unknown"),
+                energy=(features or {}).get("energy"),
+                danceability=(features or {}).get("danceability"),
+                valence=(features or {}).get("valence"),
+                tempo=(features or {}).get("tempo"),
+            )
+        )
     return vibes
 
-def get_avg_element(elem, json_data):
+def get_avg_element(elem, data):
     total = 0
     count = 0
-    
-    for n in json_data:
-        val = n.get(elem)
-        
-        if(val is not None):
+
+    for n in data:
+        val = getattr(n, elem, None)
+
+        if val is not None:
             total += val
             count += 1
-    return total / count if count > 0 else None
+
+    return total / count if count else None
+
                
-def average_song_stats():
-   song_list =  get_song_vibe()
-   
-   avg_energy = get_avg_element("energy", song_list)
-   avg_dancebility = get_avg_element("danceability", song_list)
-   avg_valence = get_avg_element("valence", song_list)
-   avg_tempo = get_avg_element("tempo", song_list)
-   
-   print(avg_tempo,avg_dancebility,avg_valence,avg_energy)
-   
-average_song_stats()
+def average_song_stats(rb):
+    song_list = top_track_vibes(rb)
+
+    return (
+        get_avg_element("energy", song_list),
+        get_avg_element("danceability", song_list),
+        get_avg_element("valence", song_list),
+        get_avg_element("tempo", song_list),
+    )
+
